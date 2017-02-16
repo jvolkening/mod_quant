@@ -26,6 +26,10 @@ while (my $line = <STDIN>) {
 
     my @values = extract_fields($line);
 
+    # pre-set filters
+    next if $values[ $map{'Confidence Level'} ] ne 'High';
+    next if $values[ $map{'Rank'}             ] ne '1';
+
     # handle mods
     # "R1(OH-ra); L3(OH-ra); A4(OH-raR0); R6(OH-ra)"
     my $n_ox = 0;
@@ -41,11 +45,13 @@ while (my $line = <STDIN>) {
 
     }
 
-    say $n_ox;
-
 }
 
 exit;
+
+
+#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------#
 
 sub extract_fields {
 
