@@ -7,29 +7,57 @@ use 5.012;
 use PerlIO::gzip;
 use Data::Dumper;
 
+# this regex needs to match PD output format
+my $re_ox = qr/^([A-Z])(\d+)\(OH[^\)]*\)$/;
+
+# allow reading from gzipped files (with autodetect)
 binmode STDIN, ":gzip(auto)";
 
 # parse header
-chomp( my $header = <STDIN> );
-my @fields = map {
-    $_ =~ s/^"//;
-    $_ =~ s/"$//;
-    $_;
-} split "\t", $header;
+my $header = <STDIN>;
+my @fields = extract_fields($header);
 
+# track field names and indices
 my %map;
 @map{@fields} = (0..$#fields);
 
-my %table;
-
+# parse PSMs
 while (my $line = <STDIN>) {
 
-    chomp $line;
-    my @values = split "\t", $line;
+    my @values = extract_fields($line);
+
+    # handle mods
+    # "R1(OH-ra); L3(OH-ra); A4(OH-raR0); R6(OH-ra)"
+    my $n_ox = 0;
+    my $mod_string = $values[  $map{Modifications} ];
+    for my $mod (split /\s*;\s*/, $mod_string) {
+
+        if ($mod =~ /$re_ox/) {
+            my $aa  = $1;
+            my $pos = $2;
+            # do something with these values
+            ++$n_ox;
+        }
+
+    }
+
+    say $n_ox;
 
 }
 
-print Dumper %table;
-
 exit;
+
+sub extract_fields {
+
+    #splits line on tabs and removes wrapping quotes, if any
+
+    my ($line) = @_;
+    chomp $line;
+    return map {
+        $_ =~ s/^"//;
+        $_ =~ s/"$//;
+        $_;
+    } split "\t", $line;
+
+};
 
