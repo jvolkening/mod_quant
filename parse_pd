@@ -6,6 +6,8 @@ use 5.012;
 
 use PerlIO::gzip;
 use Data::Dumper;
+use List::Util qw/sum/;
+use List::MoreUtils qw/uniq/;
 
 # this regex needs to match PD output format
 my $re_ox = qr/^([A-Z])(\d+)\(OH[^\)]*\)$/;
@@ -21,6 +23,12 @@ my @fields = extract_fields($header);
 my %map;
 @map{@fields} = (0..$#fields);
 
+my $data;
+my %peptides;
+my %samples;
+
+my $max_ox = 4;
+
 # parse PSMs
 while (my $line = <STDIN>) {
 
@@ -29,6 +37,15 @@ while (my $line = <STDIN>) {
     # pre-set filters
     next if $values[ $map{'Confidence Level'} ] ne 'High';
     next if $values[ $map{'Rank'}             ] ne '1';
+    next if $values[ $map{'Protein Group Accessions'} ] ne '000014';
+    my $sample  =  $values[ $map{'Spectrum File'}  ];
+    my $area    =  $values[ $map{'Precursor Area'} ];
+    my $peptide =  uc $values[ $map{'Sequence'} ];
+    next if (! length $area);
+
+    # track unique peptides and samples
+    $peptides{$peptide} = 1;
+    $samples{$sample}   = 1;
 
     # handle mods
     # "R1(OH-ra); L3(OH-ra); A4(OH-raR0); R6(OH-ra)"
@@ -44,8 +61,45 @@ while (my $line = <STDIN>) {
         }
 
     }
+    $n_ox = $max_ox if ($n_ox > $max_ox);
+   
+    push @{ $data->{$peptide}->{$sample}->{$n_ox} }, $area;
 
 }
+
+say '#', join "\t",
+    '',
+    map {$_, "\t" x ($max_ox-1)} sort keys %samples,
+;
+say '#', join "\t",
+    'peptide',
+    map {(0..$max_ox)} sort keys %samples,
+;
+
+for my $peptide (sort keys %peptides) {
+
+    print "$peptide";
+
+    for my $sample  (sort keys %samples)  {
+
+        my @sums;
+        for my $n_ox (0..$max_ox) {
+            
+            my $sum = defined $data->{$peptide}->{$sample}->{$n_ox}
+                ? sum uniq @{ $data->{$peptide}->{$sample}->{$n_ox} }
+                : 0;
+            push @sums, $sum;
+
+        }
+        my $total = sum @sums;
+        my @fracs = $total == 0
+            ? map { 0         } 0..$#sums
+            : map { $_/$total } @sums;
+        print "\t", join "\t", @fracs;
+    }
+    print "\n";
+}
+
 
 exit;
 
