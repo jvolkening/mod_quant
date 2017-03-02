@@ -4,8 +4,6 @@ use strict;
 use warnings;
 use 5.012;
 
-use PerlIO::gzip;
-use Data::Dumper;
 use Getopt::Long;
 use List::Util qw/any sum/;
 use List::MoreUtils qw/uniq/;
@@ -94,7 +92,7 @@ sub report {
             push @fields, map {"$sample.$n.$_"} @outputs;
         }
     }
-    say join "\t", @fields;
+    say join $sep, @fields;
 
     # records
     for my $key (keys %$quant) {
@@ -140,7 +138,7 @@ sub report {
 
             }
 
-            print "\t", join("\t", @ratios);
+            print $sep, join($sep, @ratios);
 
         }
 
@@ -259,10 +257,6 @@ sub filter {
             // die "Invalid comparison: $filter->{comparison}\n";
 
         my $is_match = $cpt->reval( "$value $operator $filter->{value}" );
-        #my $str = "\"$value\" $operator \"$filter->{value}\"";
-        #warn "\t$str\n";
-        #my $is_match = eval $str ;
-        #warn "\t$is_match\n";
 
         return 0 if (  $is_match && $filter->{type} eq 'exclude');
         return 0 if (! $is_match && $filter->{type} eq 'include');
