@@ -1,0 +1,306 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use 5.012;
+
+use PerlIO::gzip;
+use Data::Dumper;
+use Getopt::Long;
+use List::Util qw/any sum/;
+use List::MoreUtils qw/uniq/;
+use Safe;
+use YAML::Tiny;
+
+my $PROGRAM = 'mod_quant';
+my $VERSION = 0.001;
+
+my $fn_config;
+my $fn_names;
+
+my $cpt = new Safe;
+$cpt->permit( qw/eq lt gt le ge/ );
+
+# parse input parameters and config file
+
+GetOptions(
+    'config=s'       => \$fn_config,
+    'sample_names=s' => \$fn_names,
+);
+
+die "No configuration file specified!\n"
+    if (! defined $fn_config);
+
+
+# parse/validate config
+my $cfg = YAML::Tiny->read($fn_config)
+    or die "Error reading config file: $@\n";
+$cfg = $cfg->[0];
+
+# parse/validate names
+my $names = YAML::Tiny->read($fn_names)
+    or die "Error reading names file: $@\n";
+$names = $names->[0];
+
+my $max_mods = $cfg->{max_mods} // 1;
+
+# build modification regex
+my $mod_pick = join '|', @{ $cfg->{mod_strings} };
+my $mod_re = qr/([A-Z])(\d+)\s*\(($mod_pick)\)/;
+
+# remaining arguments should be data filenames
+my @records = map { parse_file($_) } @ARGV;
+
+@records    = collapse( @records );
+my @samples = uniq map {$_->{sample}} @records;
+my $quant   = aggregate( @records );
+report($quant);
+
+exit;
+
+sub report {
+
+    my ($quant) = @_;
+
+    my @names = defined $fn_names ? sort keys %$names : @samples;
+
+    # header
+    my @fields = qw/peptide protein/;
+    for my $sample (@names) {
+        push @fields, map {
+            "${sample}.${_}_mean", "${sample}.${_}_sd"
+        } 0..$max_mods;
+    }
+    say join "\t", @fields;
+
+    # records
+    for my $peptide (keys %$quant) {
+        
+        for my $protein (keys %{$quant->{$peptide}}) {
+
+            my @fields = qq/$peptide $protein/;
+
+            for my $sample (@names) {
+
+                my @ratios;
+
+                my @replicates = defined $fn_names
+                    ? @{ $names->{$sample} }
+                    : ($sample);
+
+                for my $repl (@replicates) {
+
+                    my @r = ('NA') x ($max_mods+1);
+
+                    my $ref = $quant->{$peptide}->{$protein}->{$repl};
+                    if (defined $ref) {
+                        @r = map {
+                            defined $ref->{sums}->{$_}
+                                ? $ref->{sums}->{$_}/$ref->{sums}->{all}
+                                : 'NA'
+                        } 0..$max_mods;
+                    }
+
+
+
+            }
+
+            print "\n";
+
+        }
+
+    }
+
+exit;
+
+sub collapse {
+
+    my @records = @_;
+
+    my @kept;
+    my $seen;
+
+    for my $record (@records) {
+
+        next if (! defined $record->{quant});
+
+        my $tag = join '.',
+            $record->{sequence},
+            $record->{protein},
+            $record->{quant},
+            $record->{sample};
+
+        if (defined $seen->{$tag}) {
+            my $operator = $cfg->{rank_best} eq 'low'  ? '>='
+                         : $cfg->{rank_best} eq 'high' ? '<='
+                         : die "unknown rank_best: $cfg->{rank_best}\n";
+            next if $cpt->reval( "$record->{rank} $operator $seen->{$tag}" );
+        }
+
+        push @kept, $record;
+        $seen->{$tag} = $record->{rank};
+            
+    }
+
+    return @kept;
+
+}
+
+sub aggregate {
+
+    my @records = @_;
+
+    my $quant;
+    my $samples;
+
+    for my $record (@records) {
+       
+        my $n_mods = 0;
+        while ($record->{mods} =~ /$mod_re/g) {
+            ++$n_mods;
+        }
+        $n_mods = $max_mods
+            if ($n_mods > $max_mods);
+
+        my $a = $record->{sequence};
+        my $p = $record->{protein};
+        my $q = $record->{quant};
+        my $s = $record->{sample};
+
+        $quant->{$a}->{$p}->{$s}->{sums}->{all}     += $q;
+        $quant->{$a}->{$p}->{$s}->{sums}->{$n_mods} += $q;
+        $quant->{$a}->{$p}->{$s}->{psms}->{all}     += 1;
+        $quant->{$a}->{$p}->{$s}->{psms}->{$n_mods} += 1;
+
+    }
+
+    return $quant;
+
+}
+            
+    
+
+sub filter {
+
+    my ($record) = @_;
+
+    my $operators = {
+        numeric => {
+            eq => '==',
+            lt => '<',
+            gt => '>',
+            le => '<=',
+            ge => '>=',
+        },
+        string => {
+            eq => 'eq',
+            lt => 'lt',
+            gt => 'gt',
+            le => 'le',
+            ge => 'ge',
+        }
+    };
+
+    for my $filter (@{ $cfg->{filters} }) {
+
+        my $match = 0;
+
+        my $value = $record->{ $filter->{field} };
+        die "No field found for key $filter->{field}\n"
+            if (! defined $value);
+
+        my $mode = $filter->{value} =~ /^[\d\.\-\+]+$/
+            ? 'numeric'
+            : 'string';
+
+        my $operator = $operators->{$mode}->{ $filter->{comparison} }
+            // die "Invalid comparison: $filter->{comparison}\n";
+
+        my $is_match = $cpt->reval( "$value $operator $filter->{value}" );
+        #my $str = "\"$value\" $operator \"$filter->{value}\"";
+        #warn "\t$str\n";
+        #my $is_match = eval $str ;
+        #warn "\t$is_match\n";
+
+        return 0 if (  $is_match && $filter->{type} eq 'exclude');
+        return 0 if (! $is_match && $filter->{type} eq 'include');
+
+    }
+
+    # pass filter
+    return 1;
+
+}
+
+sub parse_file {
+
+    my ($fn) = @_;
+
+    open my $data, '<', $fn
+        or die "Error opening $fn: $!\n";
+
+    # allow reading from gzipped files (with autodetect)
+    #binmode $data, ":gzip(auto)";
+
+    # parse header
+    my $header = <$data>;
+    my @keys = extract_fields($header);
+
+    my @records;
+
+    my $i = 0;
+
+    RECORD:
+    while (my $line = <$data>) {
+
+        my @values = extract_fields($line);
+
+        # handle case-insensitive fields
+        if (defined $cfg->{ignore_case}) {
+            for my $i (0..$#keys) {
+                next if (! any {$keys[$i] eq $_} @{ $cfg->{ignore_case} });
+                $values[$i] = uc $values[$i]
+            }
+        }
+
+
+        my %record;
+        @record{@keys} = @values;
+
+        next RECORD if (! filter(\%record) );
+
+        my %simple_record = (
+            sequence => $record{ $cfg->{sequence_field} },
+            protein  => $record{ $cfg->{protein_field}  },
+            sample   => $record{ $cfg->{sample_field}   },
+            mods     => $record{ $cfg->{mod_field}      },
+            quant    => $record{ $cfg->{quant_field}    },
+            rank     => $record{ $cfg->{rank_field}     },
+        );
+
+        push @records, \%simple_record;
+
+    }
+
+    return @records;
+
+}
+
+
+#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------#
+
+sub extract_fields {
+
+    #splits line on tabs and removes wrapping quotes, if any
+
+    my ($line) = @_;
+    chomp $line;
+    return map {
+        $_ =~ s/^"//;
+        $_ =~ s/"$//;
+        $_;
+    } split "\t", $line;
+
+};
+

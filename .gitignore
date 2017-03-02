@@ -1,0 +1,12 @@
+.*
+!/.gitignore
+!/.gitattributes
+!/.travis.yml
+/Build
+/blib/
+/_build/
+/META*
+/MYMETA*
+*.tar.gz
+*.bak
+dev
