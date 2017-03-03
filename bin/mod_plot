@@ -1,0 +1,210 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use 5.012;
+
+use Getopt::Long;
+use List::Util qw/any sum/;
+use List::MoreUtils qw/uniq/;
+use BioX::Seq::Fetch;
+
+my $PROGRAM = 'mod_plot';
+my $VERSION = 0.001;
+
+# parse input parameters and config file
+my $protein;
+my $fn_fasta;
+my $fn_quant;
+my $prefix;
+my $order;
+
+GetOptions(
+    'protein=s' => \$protein,
+    'fasta=s'   => \$fn_fasta,
+    'quant=s'   => \$fn_quant,
+    'prefix=s'  => \$prefix,
+    'order=s'   => \$order,
+);
+
+my $seqs = BioX::Seq::Fetch->new($fn_fasta);
+my $seq = $seqs->fetch_seq($protein) // die "failed to find $protein in fasta\n";
+$seq = uc $seq;
+
+open my $quant, '<', $fn_quant;
+my $header = <$quant>;
+chomp $header;
+my @parts = split "\t", $header;
+die "invalid header format\n" if $parts[0] ne '#peptide';
+die "invalid header format\n" if $parts[1] ne 'protein';
+
+my $fields;
+my @samples;
+my @n;
+
+for (2..$#parts) {
+    my $key = $parts[$_];
+    my ($base, $n, $type) = ( $key =~ /^(.+)\.(\d+)\.(mean|sd|psms|quant)$/ );
+    die "invalid header field: $key\n" if (! defined $type);
+    push @samples, $base;
+    push @n, $n if ($n > 0);
+    $fields->{$n}->{$base}->{$type} = $_;
+}
+
+@n = sort {$a <=> $b} uniq @n;
+@samples = uniq @samples;
+@samples = split(',', $order) if (defined $order);
+
+open my $stream, '|-', 'gnuplot5';
+#open my $stream, '>', 'foo.gpl';
+
+my $i = 0;
+my @peptides;
+my @blocks;
+
+while (my $line = <$quant>) {
+    chomp $line;
+    my @parts = split "\t", $line;
+    next if $parts[1] ne $protein;
+    my $start;
+    my $end;
+    if ($seq =~ /$parts[0]/) {
+        $start = $-[0] + 1; 
+        $end = $+[0];
+    }
+    else {
+        warn "$parts[0] not found in protein\n";
+        next;
+    }
+
+    my $name = "$start - $end";
+    push @peptides, $name;
+
+    my $id = '$h' . $i++;
+
+    my $block;
+
+    open my $stream, '>', \$block;
+
+    say {$stream} "$id << EOD";
+    say {$stream} join "\t", 'mods', @n, 'sum', 'sd', 'psms';
+
+    for my $sample (@samples) {
+        my $psms = 0;
+        my $sd   = 0;
+        my @means;
+        for my $n (0, @n) {
+            
+            $psms += defined $fields->{$n}->{$sample}->{psms}
+                ? @parts[ $fields->{$n}->{$sample}->{psms} ]
+                : 0;
+            next if ($n == 0);
+            my $sdt = defined $fields->{$n}->{$sample}->{sd} 
+                ? @parts[ $fields->{$n}->{$sample}->{sd} ]
+                : 0;
+            $sd += $sdt eq 'NA' ? 0 : $sdt;
+            my $mu = defined $fields->{$n}->{$sample}->{mean}
+                ? @parts[ $fields->{$n}->{$sample}->{mean} ]
+                : 0;
+            push @means, ($mu eq 'NA' ? 0 : $mu);
+        }
+        my $name = $sample;
+        $name =~ s/^$prefix// if (defined $prefix);
+        $name =~ s/_/\\\\_/g;
+        say {$stream} join "\t",
+            $name,
+            @means,
+            sum(@means),
+            $sd,
+            $psms;
+    }
+    
+    say {$stream} "EOD";
+
+    close $stream;
+
+    push @blocks, [$start, $id, $name, $block];
+
+}
+
+my $width = 80 * scalar(@blocks);
+@blocks = sort {$a->[0] <=> $b->[0]} @blocks;
+for (@blocks) {
+    print {$stream} $_->[3];
+}
+
+
+my $n_samples = scalar @samples;
+my $n_n = scalar(@n) + 1;
+my $t = $n_n + 1;
+my $s = $n_n + 2;
+my $p = $n_n + 3;
+my @shading;
+my @hists;
+for my $j (0..$#blocks) {
+
+    my $o = $j * ($n_samples + 1);
+    my $o1 = $o - 1;
+    my $o2 = $o + $n_samples;
+    my $use_title = $j == 0 ? '' : 'notitle';
+    my $bl = $blocks[$j];
+
+    #print {$stream} <<"BLOCK"
+    push @hists, <<"BLOCK"
+newhistogram "{/:Bold*1.2 $bl->[2]}" lt 1, '$bl->[1]' using 2:xtic(1) $use_title \\
+ noenhanced, for [i=3:$n_n] '' using i $use_title, '' using (\$0+$o):$t:$s with errorbars \\
+ notitle pt 0 lc rgb '#000000' lw 1,  '' using (\$0+$o):(\$$t+\$$s+0.04):$p with labels left rotate notitle, \\
+BLOCK
+;
+
+    push @shading, "set arrow from $o2,0 to $o2,1.2 nohead lc rgb 'black'\n";
+    #my $k = $j + 1;
+    #if ($j % 2) {
+        #push @shading, "set object $k rectangle from $o1,0 to $o2,1.2 fillcolor rgb \"#cccccc\" lw 0 behind\n";
+    #}
+    #else {
+        #push @shading, "set object $k rectangle from $o1,0 to $o2,1.2 fillcolor rgb \"#ffffff\" lw 0 behind\n";
+    #}
+
+}
+print {$stream} cmd();
+print {$stream} $_ for (@shading);
+print {$stream} "plot \\\n";
+print {$stream} $_ for (@hists);
+
+sub cmd {
+
+return <<"CMD"
+set terminal svg size $width,300 enhanced fname 'FreeSans'  fsize 11 name "percent_mod" butt solid
+#set output 'histograms.4.svg'
+
+# line styles
+set linetype 1 lw 1 lc rgb '#E41A1C' # red
+set linetype 2 lw 1 lc rgb '#377EB8' # blue
+set linetype 3 lw 1 lc rgb '#4DAF4A' # green
+set linetype 4 lw 1 lc rgb '#984EA3' # purple
+set linetype 5 lw 1 lc rgb '#FF7F00' # orange
+set linetype 6 lw 1 lc rgb '#FFFF33' # yellow
+set linetype 7 lw 1 lc rgb '#A65628' # brown
+set linetype 8 lw 1 lc rgb '#F781BF' # pink
+
+set bar 1.000000 front
+set boxwidth 0.9 absolute
+set style fill   solid 1.00 border lt -1
+set key outside right top vertical Left reverse noenhanced title autotitle columnhead title "# mods" nobox
+set style histogram rowstacked title textcolor lt -1
+#set style textbox transparent margins  1.0,  1.0 border
+unset logscale
+set style data histograms
+set xtics border in scale 0,0 nomirror rotate by -55 offset -1,0 autojustify
+set ytics nomirror
+set title "{/:Bold*1.2 Percent Modification}" 
+set ylabel "{/:Bold*1.2 fraction modified}"
+set yrange [0:*] noreverse nowriteback
+set datafile separator "\t"
+set bars 1.0
+set offset graph 0.0, graph 0.0, graph 0.01, graph 0.0
+CMD
+;
+
+}
