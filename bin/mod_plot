@@ -89,6 +89,8 @@ while (my $line = <$quant>) {
     say {$stream} "$id << EOD";
     say {$stream} join "\t", 'mods', @n, 'sum', 'sd', 'psms';
 
+    my $tot_psms = 0;
+
     for my $sample (@samples) {
         my $psms = 0;
         my $sd   = 0;
@@ -111,6 +113,7 @@ while (my $line = <$quant>) {
         my $name = $sample;
         $name =~ s/^$prefix// if (defined $prefix);
         $name =~ s/_/\\\\_/g;
+        $tot_psms += $psms;
         say {$stream} join "\t",
             $name,
             @means,
@@ -123,7 +126,7 @@ while (my $line = <$quant>) {
 
     close $stream;
 
-    push @blocks, [$start, $id, $name, $block];
+    push @blocks, [$start, $id, $name, $block, $tot_psms];
 
 }
 
@@ -158,13 +161,10 @@ BLOCK
 ;
 
     push @shading, "set arrow from $o2,0 to $o2,1.2 nohead lc rgb 'black'\n";
-    #my $k = $j + 1;
-    #if ($j % 2) {
-        #push @shading, "set object $k rectangle from $o1,0 to $o2,1.2 fillcolor rgb \"#cccccc\" lw 0 behind\n";
-    #}
-    #else {
-        #push @shading, "set object $k rectangle from $o1,0 to $o2,1.2 fillcolor rgb \"#ffffff\" lw 0 behind\n";
-    #}
+    my $k = $j + 1;
+    my $f = $bl->[4]/100;
+    $f = $f > 1 ? 1 : $f;
+    push @shading, "set object $k rectangle from $o1,0 to $o2,1.2 fillcolor palette cb $bl->[4] lw 0 behind\n";
 
 }
 print {$stream} cmd();
@@ -187,6 +187,13 @@ set linetype 5 lw 1 lc rgb '#FF7F00' # orange
 set linetype 6 lw 1 lc rgb '#FFFF33' # yellow
 set linetype 7 lw 1 lc rgb '#A65628' # brown
 set linetype 8 lw 1 lc rgb '#F781BF' # pink
+
+set palette defined (0 '#ffffff', 1 '#bbbbbb')
+set pm3d implicit
+unset colorbox
+set colorbox user origin .985,.2 size .003,.2
+set cblabel "# PSMs"
+set cbrange [0:100]
 
 set bar 1.000000 front
 set boxwidth 0.9 absolute
