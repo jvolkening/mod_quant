@@ -85,7 +85,7 @@ sub report {
     my @samples = defined $names ? sort keys %$names : @samples;
 
     # header
-    my @fields = q/#peptide protein/;
+    my @fields = ('#peptide', 'protein');
     for my $sample (@samples) {
         for my $n (0..$max_mods) {
             my @outputs = grep {$cfg->{output_fields}->{$_}} qw/mean sd psms quant/;
