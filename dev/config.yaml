@@ -1,0 +1,38 @@
+filters:
+
+  - field: "Confidence"
+    type: include
+    value: High 
+    comparison: eq
+
+  - field: "Rank"
+    type: include
+    value: 2
+    comparison: lt
+
+  - field: "Search Engine Rank"
+    type: include
+    value: 2
+    comparison: lt
+
+ignore_case:
+  - "Annotated Sequence"
+
+peptide_field: "Annotated Sequence"
+protein_field: "Protein Accessions"
+sample_field:  "Spectrum File"
+quant_field:   "Area"
+mod_field:     "Modifications"
+rank_field:    "Expectation Value"
+rank_best:     "low"
+
+mod_strings:
+  - "Oxidation"
+
+max_mods: 4
+
+output_fields:
+  mean  : 1
+  sd    : 1
+  psms  : 1
+  quant : 1

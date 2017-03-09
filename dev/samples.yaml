@@ -1,0 +1,19 @@
+ctrl:
+  - BSA_control_R1.raw
+  - BSA_control_R2.raw
+  - BSA_control_R3.raw
+
+15s:
+  - BSA_15s_R1.raw
+  - BSA_15s_R2.raw
+  - BSA_15s_R3.raw
+
+30s:
+  - BSA_30s_R1.raw
+  - BSA_30s_R2.raw
+  - BSA_30s_R3.raw
+
+60s:
+  - BSA_60s_R1.raw
+  - BSA_60s_R2.raw
+  - BSA_60s_R3.raw
