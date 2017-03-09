@@ -16,6 +16,7 @@ my $VERSION = 0.001;
 my $fn_config;
 my $fn_names;
 my $parse_names = 0;
+my $prefix;
 
 my $cpt = new Safe;
 $cpt->permit( qw/eq lt gt le ge/ );
@@ -28,6 +29,7 @@ GetOptions(
     'config=s'        => \$fn_config,
     'sample_config=s' => \$fn_names,
     'parse_names'     => \$parse_names,
+    'prefix=s'        => \$prefix,
 );
 
 die "No configuration file specified!\n"
@@ -49,7 +51,7 @@ my $mod_re = qr/([A-Z])(\d+)\s*\(($mod_pick)\)/;
 my @records = map { parse_file($_) } @ARGV;
 
 @records    = collapse( @records );
-my @samples = uniq map {$_->{sample}} @records;
+my @samples = sort {$a cmp $b} uniq map {$_->{sample}} @records;
 my $quant   = aggregate( @records );
 report($quant);
 
@@ -70,19 +72,32 @@ sub report {
         $names = $names->[0];
     }
     # otherwise try to parse filenames if asked
-    elsif (defined $parse_names) {
+    elsif ($parse_names) {
+        my $i;
         for (@samples) {
             if ($_ =~ /^(.+)[_\.\s]R\d+(?:\.\w{1,6})?$/) {
-                push @{ $names->{$1} }, $_;
+                my $base = $1;
+                $base =~ s/^$prefix// if (defined $prefix);
+                $names->{$base}->{order} = $i++
+                    if (! defined $names->{$base});
+                push @{ $names->{$base}->{replicates} }, $_;
             }
         }
     }
     # otherwise just assume one replicate per sample
     else {
-        $names = { map {$_ => $_} @samples };
+        $names = {
+            map {
+                my $base = $samples[$_];
+                $base =~ s/^$prefix// if (defined $prefix);
+                $base => {order => $_, replicates => [$samples[$_]]};
+            } 0..$#samples
+        };
     }
 
-    my @samples = defined $names ? sort keys %$names : @samples;
+    my @samples = sort {
+        $names->{$a}->{order} <=> $names->{$b}->{order}
+    } keys %{$names};
 
     # header
     my @fields = ('#peptide', 'protein');
@@ -103,7 +118,7 @@ sub report {
 
             my @ratios;
 
-            my @replicates = @{ $names->{$sample} };
+            my @replicates = @{ $names->{$sample}->{replicates} };
 
             for my $n (0..$max_mods) {
 

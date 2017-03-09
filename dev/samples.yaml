@@ -1,19 +1,27 @@
 ctrl:
-  - BSA_control_R1.raw
-  - BSA_control_R2.raw
-  - BSA_control_R3.raw
+  order: 1
+  replicates:
+    - Thrombin_alone_control_R1.raw
+    - Thrombin_alone_control_R2.raw
+    - Thrombin_alone_control_R3.raw
+
+5s:
+  order: 2
+  replicates:
+    - Thrombin_alone_5s_R1.raw
+    - Thrombin_alone_5s_R2.raw
+    - Thrombin_alone_5s_R3.raw
+
+10s:
+  order: 3
+  replicates:
+    - Thrombin_alone_10s_R1.raw
+    - Thrombin_alone_10s_R2.raw
+    - Thrombin_alone_10s_R3.raw
 
 15s:
-  - BSA_15s_R1.raw
-  - BSA_15s_R2.raw
-  - BSA_15s_R3.raw
-
-30s:
-  - BSA_30s_R1.raw
-  - BSA_30s_R2.raw
-  - BSA_30s_R3.raw
-
-60s:
-  - BSA_60s_R1.raw
-  - BSA_60s_R2.raw
-  - BSA_60s_R3.raw
+  order: 4
+  replicates:
+    - Thrombin_alone_15s_R1.raw
+    - Thrombin_alone_15s_R2.raw
+    - Thrombin_alone_15s_R3.raw
