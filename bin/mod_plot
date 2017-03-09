@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use 5.012;
 
+use File::Which;
 use Getopt::Long;
 use List::Util qw/any sum/;
 use List::MoreUtils qw/uniq/;
@@ -12,19 +13,38 @@ use BioX::Seq::Fetch;
 my $PROGRAM = 'mod_plot';
 my $VERSION = 0.001;
 
+my $GNUPLOT_BIN =
+        which('gnuplot5')
+     // which('gnuplot')
+     // die "ERROR: gnuplot is required but not found\n";
+
 # parse input parameters and config file
 my $protein;
 my $fn_fasta;
 my $fn_quant;
 my $prefix;
 my $order;
+my $ylim       = 1.2;
+my $label_psms = 0;
+my $shade_psms = 0;
+my $min_psms   = 0;
+my $star_met   = 0;
+my $min_coord;
+my $max_coord;
 
 GetOptions(
-    'protein=s' => \$protein,
-    'fasta=s'   => \$fn_fasta,
-    'quant=s'   => \$fn_quant,
-    'prefix=s'  => \$prefix,
-    'order=s'   => \$order,
+    'protein=s'   => \$protein,
+    'fasta=s'     => \$fn_fasta,
+    'quant=s'     => \$fn_quant,
+    'prefix=s'    => \$prefix,
+    'order=s'     => \$order,
+    'ylim=f'      => \$ylim,
+    'label_psms'  => \$label_psms,
+    'shade_psms'  => \$shade_psms,
+    'min_psms=i'  => \$min_psms,
+    'star_met'    => \$star_met,
+    'min_coord=i' => \$min_coord,
+    'max_coord=i' => \$max_coord,
 );
 
 my $seqs = BioX::Seq::Fetch->new($fn_fasta);
@@ -55,17 +75,16 @@ for (2..$#parts) {
 @samples = uniq @samples;
 @samples = split(',', $order) if (defined $order);
 
-open my $stream, '|-', 'gnuplot5';
-#open my $stream, '>', 'foo.gpl';
+open my $stream, '|-', $GNUPLOT_BIN;
 
 my $i = 0;
 my @peptides;
 my @blocks;
-
+LINE:
 while (my $line = <$quant>) {
     chomp $line;
     my @parts = split "\t", $line;
-    next if $parts[1] ne $protein;
+    next LINE if $parts[1] ne $protein;
     my $start;
     my $end;
     if ($seq =~ /$parts[0]/) {
@@ -74,10 +93,17 @@ while (my $line = <$quant>) {
     }
     else {
         warn "$parts[0] not found in protein\n";
-        next;
+        next LINE;
     }
 
-    my $name = "$start - $end";
+    # check coordinate range
+    next LINE if (defined $min_coord && $start < $min_coord);
+    next LINE if (defined $max_coord && $end   > $max_coord);
+
+    my $star = ($star_met && $parts[0] =~ /M/)
+        ? '*'
+        : '';
+    my $name = "$start - $end$star";
     push @peptides, $name;
 
     my $id = '$h' . $i++;
@@ -95,12 +121,13 @@ while (my $line = <$quant>) {
         my $psms = 0;
         my $sd   = 0;
         my @means;
+        NMOD:
         for my $n (0, @n) {
             
             $psms += defined $fields->{$n}->{$sample}->{psms}
                 ? @parts[ $fields->{$n}->{$sample}->{psms} ]
                 : 0;
-            next if ($n == 0);
+            next NMOD if ($n == 0);
             my $sdt = defined $fields->{$n}->{$sample}->{sd} 
                 ? @parts[ $fields->{$n}->{$sample}->{sd} ]
                 : 0;
@@ -126,14 +153,21 @@ while (my $line = <$quant>) {
 
     close $stream;
 
-    push @blocks, [$start, $id, $name, $block, $tot_psms];
+    next LINE if ($tot_psms < $min_psms);
+
+    push @blocks, [$start, $end, $id, $name, $block, $tot_psms];
 
 }
 
 my $width = 80 * scalar(@blocks);
-@blocks = sort {$a->[0] <=> $b->[0]} @blocks;
+
+@blocks = sort {
+        $a->[0] <=> $b->[0]
+     || $a->[1] <=> $b->[1]
+} @blocks;
+
 for (@blocks) {
-    print {$stream} $_->[3];
+    print {$stream} $_->[4];
 }
 
 
@@ -152,21 +186,35 @@ for my $j (0..$#blocks) {
     my $use_title = $j == 0 ? '' : 'notitle';
     my $bl = $blocks[$j];
 
-    #print {$stream} <<"BLOCK"
+    my $lbl_str = $label_psms
+        ? ",  '' using (\$0+$o):(\$$t+\$$s+0.04):$p with labels left rotate notitle"
+        : '';
+
     push @hists, <<"BLOCK"
-newhistogram "{/:Bold*1.2 $bl->[2]}" lt 1, '$bl->[1]' using 2:xtic(1) $use_title \\
- noenhanced, for [i=3:$n_n] '' using i $use_title, '' using (\$0+$o):$t:$s with errorbars \\
- notitle pt 0 lc rgb '#000000' lw 1,  '' using (\$0+$o):(\$$t+\$$s+0.04):$p with labels left rotate notitle, \\
+newhistogram "{/:Bold*1.2 $bl->[3]}" lt 1, '$bl->[2]' using 2:xtic(1) $use_title \\
+ noenhanced, for [i=3:$n_n] '' using i $use_title, '' using (\$0+$o):$t:$s with yerrorbars \\
+ notitle pt 0 lc rgb '#000000' lw 1 $lbl_str, \\
 BLOCK
 ;
 
-    push @shading, "set arrow from $o2,0 to $o2,1.2 nohead lc rgb 'black'\n";
-    my $k = $j + 1;
-    my $f = $bl->[4]/100;
-    $f = $f > 1 ? 1 : $f;
-    push @shading, "set object $k rectangle from $o1,0 to $o2,1.2 fillcolor palette cb $bl->[4] lw 0 behind\n";
+    push @shading, "set arrow from $o2,0 to $o2,$ylim nohead lc rgb 'black'\n";
+    if ($shade_psms) {
+        my $k = $j + 1;
+        my $f = $bl->[5]/100;
+        $f = $f > 1 ? 1 : $f;
+        push @shading, "set object $k rectangle from $o1,0 to $o2,$ylim fillcolor palette cb $bl->[5] lw 0 behind\n";
+    }
 
 }
+
+my $cb_block = $shade_psms
+    ? <<"BLOCK"
+set colorbox user origin .985,.2 size .003,.2
+set cblabel "# PSMs"
+set cbrange [0:50]
+BLOCK
+    : '';
+
 print {$stream} cmd();
 print {$stream} $_ for (@shading);
 print {$stream} "plot \\\n";
@@ -188,12 +236,11 @@ set linetype 6 lw 1 lc rgb '#FFFF33' # yellow
 set linetype 7 lw 1 lc rgb '#A65628' # brown
 set linetype 8 lw 1 lc rgb '#F781BF' # pink
 
-set palette defined (0 '#ffffff', 1 '#bbbbbb')
+set palette defined (0 '#ffffff', 1 '#999999')
 set pm3d implicit
 unset colorbox
-set colorbox user origin .985,.2 size .003,.2
-set cblabel "# PSMs"
-set cbrange [0:100]
+
+$cb_block
 
 set bar 1.000000 front
 set boxwidth 0.9 absolute
@@ -207,10 +254,10 @@ set xtics border in scale 0,0 nomirror rotate by -55 offset -1,0 autojustify
 set ytics nomirror
 set title "{/:Bold*1.2 Percent Modification}" 
 set ylabel "{/:Bold*1.2 fraction modified}"
-set yrange [0:*] noreverse nowriteback
+set yrange [0:$ylim] noreverse nowriteback
 set datafile separator "\t"
 set bars 1.0
-set offset graph 0.0, graph 0.0, graph 0.01, graph 0.0
+set offset graph 0.0, graph 0.0, graph 0.0, graph 0.0
 CMD
 ;
 
