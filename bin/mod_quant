@@ -157,7 +157,10 @@ sub collapse {
 
     for my $record (@records) {
 
-        next if (! defined $record->{quant});
+        next if (
+            ! defined $record->{quant}
+         || ! length  $record->{quant}
+        );
 
         my $tag = join '.',
             $record->{peptide},
@@ -206,7 +209,7 @@ sub aggregate {
             $record->{peptide},
             $sep,
             $record->{protein};
-
+        
         $quant->{$key}->{$s}->{sums}->{all}     += $q;
         $quant->{$key}->{$s}->{sums}->{$n_mods} += $q;
         $quant->{$key}->{$s}->{psms}->{all}     += $p;
