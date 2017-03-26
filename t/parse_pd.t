@@ -10,6 +10,7 @@ use File::Temp;
 use File::Compare;
 
 my $bin = 'bin/parse_pd';
+ok( 1, "fake test " );
 #my $in  = 't/test_data/test.aln.fa';
 #my $cmp;
 #my $out;

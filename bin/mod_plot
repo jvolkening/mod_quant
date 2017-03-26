@@ -224,7 +224,6 @@ sub cmd {
 
 return <<"CMD"
 set terminal svg size $width,300 enhanced fname 'FreeSans'  fsize 11 name "percent_mod" butt solid
-#set output 'histograms.4.svg'
 
 # line styles
 set linetype 1 lw 1 lc rgb '#E41A1C' # red
@@ -262,3 +261,104 @@ CMD
 ;
 
 }
+
+
+__END__
+
+=head1 NAME
+
+mod_plot - produce single-protein figure from output of mod_quant
+
+=head1 SYNOPSIS
+
+mod_plot --config --sample_config samples.yaml <input_1.tsv> [<input_n.tsv>]
+
+=head1 DESCRIPTION
+
+C<mod_quant> parses tab-delimited output from an LC-MS/MS database search
+containing quantification values and outputs ratios of peptide modifications
+for the input samples.
+
+=head1 PREREQUISITES
+
+Requires the following non-core Perl libraries:
+
+=over 1
+
+=item * YAML::Tiny
+
+=back
+
+In addition, requires the following binaries installed on the system path:
+
+=over 1
+
+=item * gnuplot
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--config> I<filename>
+
+Path to YAML file containing parsing configuration
+
+=item B<--sample_config> I<filename>
+
+Path to YAML file containing sample/replicate configuration
+
+=item B<--parse_names>
+
+If given, sample names will be parsed as follows:
+
+=over 1
+
+=item * suffixes (dot followed by 1-6 characters) are stripped
+
+=item * the pattern "_Rn", where "n" is a positive integer, is looked for at
+the end of the name. If found, it is stripped and the sample is assigned as
+the "n"th replicate of the remaining sample name.
+
+=back
+
+As an example, the following name "experiment2_treated_R3.raw" would be parsed
+as the 3rd replicate of sample "experiment2_treated".
+
+This option is ignored if C<--sample_config> is specified.
+
+=item B<--prefix>
+
+If given, the prefix will be stripped from the beginning of sample names if
+matching.
+
+=back
+
+=head1 CAVEATS AND BUGS
+
+Please submit bug reports to the issue tracker in the distribution repository.
+
+=head1 AUTHOR
+
+Jeremy Volkening (jdv@base2bio.com)
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2014-17 Jeremy Volkening
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut
+
