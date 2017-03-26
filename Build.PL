@@ -6,7 +6,7 @@ use Module::Build;
 
 my $builder = Module::Build->new(
     module_name        => 'plimb',
-    dist_version       => 0.001,
+    dist_version       => 0.002,
     dist_abstract      => 'PLIMB software',
     license            => 'GPL_3',
     dist_author        => q{Jeremy Volkening <volkening@wisc.edu>},

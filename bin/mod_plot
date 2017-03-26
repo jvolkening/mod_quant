@@ -358,6 +358,8 @@ ID used in both the quantification file and the FASTA file indicated).
 
 =head1 OPTIONAL PARAMETERS
 
+=over 4
+
 =item B<--ylim> I<floating-point number>
 
 The upper limit of the y-axis to use in plotting (the lower limit is always
