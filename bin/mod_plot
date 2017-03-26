@@ -159,8 +159,6 @@ while (my $line = <$quant>) {
 
 }
 
-my $width = 80 * scalar(@blocks);
-
 @blocks = sort {
         $a->[0] <=> $b->[0]
      || $a->[1] <=> $b->[1]
@@ -176,6 +174,11 @@ my $n_n = scalar(@n) + 1;
 my $t = $n_n + 1;
 my $s = $n_n + 2;
 my $p = $n_n + 3;
+
+my $width = ($n_samples * 20) * scalar(@blocks) + 155;
+my $cb_x = ($width-60)/$width;
+my $cb_w = 10/$width;
+
 my @shading;
 my @hists;
 for my $j (0..$#blocks) {
@@ -209,7 +212,7 @@ BLOCK
 
 my $cb_block = $shade_psms
     ? <<"BLOCK"
-set colorbox user origin .985,.2 size .003,.2
+set colorbox user origin $cb_x,.2 size $cb_w,.2
 set cblabel "# PSMs"
 set cbrange [0:50]
 BLOCK
