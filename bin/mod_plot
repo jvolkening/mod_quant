@@ -4,14 +4,15 @@ use strict;
 use warnings;
 use 5.012;
 
+use BioX::Seq::Fetch;
 use File::Which;
 use Getopt::Long;
-use List::Util qw/any sum/;
 use List::MoreUtils qw/uniq/;
-use BioX::Seq::Fetch;
+use List::Util qw/any sum/;
+use Pod::Usage;
 
 my $PROGRAM = 'mod_plot';
-my $VERSION = 0.001;
+my $VERSION = 0.002;
 
 my $GNUPLOT_BIN =
         which('gnuplot5')
@@ -22,7 +23,6 @@ my $GNUPLOT_BIN =
 my $protein;
 my $fn_fasta;
 my $fn_quant;
-my $prefix;
 my $order;
 my $ylim       = 1.2;
 my $label_psms = 0;
@@ -33,10 +33,9 @@ my $min_coord;
 my $max_coord;
 
 GetOptions(
-    'protein=s'   => \$protein,
-    'fasta=s'     => \$fn_fasta,
     'quant=s'     => \$fn_quant,
-    'prefix=s'    => \$prefix,
+    'fasta=s'     => \$fn_fasta,
+    'protein=s'   => \$protein,
     'order=s'     => \$order,
     'ylim=f'      => \$ylim,
     'label_psms'  => \$label_psms,
@@ -45,10 +44,23 @@ GetOptions(
     'star_met'    => \$star_met,
     'min_coord=i' => \$min_coord,
     'max_coord=i' => \$max_coord,
+    'help'        => sub{ pod2usage(-verbose => 2); },
+    'version'     => sub{ print "This is $PROGRAM v$VERSION\n";exit; },
 );
 
-my $seqs = BioX::Seq::Fetch->new($fn_fasta);
-my $seq = $seqs->fetch_seq($protein) // die "failed to find $protein in fasta\n";
+# parameter checking
+
+die "Error reading protein sequence (did you provide a valid file using '--fasta'?)\n"
+    if (! defined $fn_fasta || ! -r $fn_fasta);
+die "Error reading quantification table (did you provide a valid file using '--quant'?)\n"
+    if (! defined $fn_quant || ! -r $fn_quant);
+die "Missing the required '--protein' parameter\n"
+    if (! defined $protein);
+
+my $seqs = BioX::Seq::Fetch->new($fn_fasta)
+    or die "Error reading FASTA database: $@\n";
+my $seq = $seqs->fetch_seq($protein)
+    // die "failed to find $protein in FASTA database\n";
 $seq = uc $seq;
 
 open my $quant, '<', $fn_quant;
@@ -73,9 +85,26 @@ for (2..$#parts) {
 
 @n = sort {$a <=> $b} uniq @n;
 @samples = uniq @samples;
-@samples = split(',', $order) if (defined $order);
 
-open my $stream, '|-', $GNUPLOT_BIN;
+# re-define sample order if explicitly given
+if (defined $order) {
+    my @samples_new = split ',', $order;
+
+    # check that provided sample names are valid
+    for my $sample (@samples_new) {
+        die "ERROR: sample $sample listed in '--order' but not found in input file\n"
+            if (! any {$_ eq $sample} @samples);
+    }
+    # warn about missing sample names
+    for my $sample (@samples) {
+        warn "WARNING: sample $sample found in input but not listed in '--order'\n"
+            if (! any {$_ eq $sample} @samples_new);
+    }
+
+    @samples = @samples_new;
+}
+
+die "ERROR: zero samples found\n" if (scalar(@samples) < 1);
 
 my $i = 0;
 my @peptides;
@@ -92,7 +121,7 @@ while (my $line = <$quant>) {
         $end = $+[0];
     }
     else {
-        warn "$parts[0] not found in protein\n";
+        warn "WARNING: $parts[0] not found in protein\n";
         next LINE;
     }
 
@@ -138,7 +167,6 @@ while (my $line = <$quant>) {
             push @means, ($mu eq 'NA' ? 0 : $mu);
         }
         my $name = $sample;
-        $name =~ s/^$prefix// if (defined $prefix);
         $name =~ s/_/\\\\_/g;
         $tot_psms += $psms;
         say {$stream} join "\t",
@@ -159,15 +187,21 @@ while (my $line = <$quant>) {
 
 }
 
+die "ERROR: No valid peptides found to plot after all filtering applied\n"
+    if (scalar(@blocks) < 1);
+
 @blocks = sort {
         $a->[0] <=> $b->[0]
      || $a->[1] <=> $b->[1]
 } @blocks;
 
+
+open my $stream, '|-', $GNUPLOT_BIN
+    or die "Error opening pipe to gnuplot: $!\n";
+
 for (@blocks) {
     print {$stream} $_->[4];
 }
-
 
 my $n_samples = scalar @samples;
 my $n_n = scalar(@n) + 1;
@@ -274,13 +308,12 @@ mod_plot - produce single-protein figure from output of mod_quant
 
 =head1 SYNOPSIS
 
-mod_plot --config --sample_config samples.yaml <input_1.tsv> [<input_n.tsv>]
+mod_plot --quant <quant_file> --fasta <fasta_file> --protein <protein_id> [options] > out.svg
 
 =head1 DESCRIPTION
 
-C<mod_quant> parses tab-delimited output from an LC-MS/MS database search
-containing quantification values and outputs ratios of peptide modifications
-for the input samples.
+C<mod_plot> parses the output from C<mod_quant> and produces a plot of
+modification ratios for a single protein or regions of a protein.
 
 =head1 PREREQUISITES
 
@@ -288,7 +321,11 @@ Requires the following non-core Perl libraries:
 
 =over 1
 
-=item * YAML::Tiny
+=item * BioX::Seq
+
+=item * File::Which
+
+=item * List::MoreUtils
 
 =back
 
@@ -300,41 +337,84 @@ In addition, requires the following binaries installed on the system path:
 
 =back
 
-=head1 OPTIONS
+=head1 REQUIRED PARAMETERS
 
 =over 4
 
-=item B<--config> I<filename>
+=item B<--quant> I<filename>
 
-Path to YAML file containing parsing configuration
+Path to the tab-delimited output from C<mod_quant>
 
-=item B<--sample_config> I<filename>
+=item B<--fasta> I<filename>
 
-Path to YAML file containing sample/replicate configuration
+Path to the FASTA file containing the sequence of the protein of interest
 
-=item B<--parse_names>
+=item B<--protein>
 
-If given, sample names will be parsed as follows:
-
-=over 1
-
-=item * suffixes (dot followed by 1-6 characters) are stripped
-
-=item * the pattern "_Rn", where "n" is a positive integer, is looked for at
-the end of the name. If found, it is stripped and the sample is assigned as
-the "n"th replicate of the remaining sample name.
+The ID of the protein group of interest (note that this must EXACTLY match the
+ID used in both the quantification file and the FASTA file indicated).
 
 =back
 
-As an example, the following name "experiment2_treated_R3.raw" would be parsed
-as the 3rd replicate of sample "experiment2_treated".
+=head1 OPTIONAL PARAMETERS
 
-This option is ignored if C<--sample_config> is specified.
+=item B<--ylim> I<floating-point number>
 
-=item B<--prefix>
+The upper limit of the y-axis to use in plotting (the lower limit is always
+set to zero). Default: 1.2.
 
-If given, the prefix will be stripped from the beginning of sample names if
-matching.
+=item B<--label_psms>
+
+If given, the total number of PSMs contributing to each ratio will be added
+as a label above the bar. Note that this value can be cut off depending on the
+y-axis range, so some trial and error with the C<--ylim> parameter may be
+necessary. See the C<--shade_psms> option for an alternative representation
+that is less dependent on scaling.
+
+=item B<--shade_psms>
+
+If given, the background for each peptide subplot is shaded according to a
+grayscale color spectrum in order to indicate the total number of PSMs
+contributing to the quantification of that peptide. The value is summed for
+all samples -- see C<label_psms> for an alternative representation that will
+separates PSM count by sample.
+
+=item B<--min_psms> I<postive integer>
+
+The minimum total number of PSMs for a peptide required to plot that peptide.
+Default: 1.
+
+=item B<--star_met>
+
+Indicate methionine-containing peptides with an asterisk after the peptide
+coordinates. Default: false.
+
+=item B<--min_coord> I<positive integer>
+
+The minimum protein-level coordinate of peptides to plot (peptides starting
+prior to this residue will be ignored). Default: 1.
+
+=item B<--max_coord> I<positive integer>
+
+The maximum protein-level coordinate of peptides to plot (peptides ending
+after this residue will be ignored). Default: protein length.
+
+=item B<--order> I<sample1,sample2,sample3,etc>
+
+A comma-separated list of sample names. If given, the output will be
+re-ordered according to this list. Use of this option is discouraged, as it is
+fragile (names must match quantification file exactly) and sensitive to typos,
+etc. It is recommended to use the facilities in C<mod_quant> to produce the
+desired output order at that stage of analysis.  This option will likely be
+removed in a future release. Default: input order.
+
+=item B<--help>
+
+Print usage summary and exit.
+
+=item B<--version>
+
+Print program version and exit.
 
 =back
 

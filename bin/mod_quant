@@ -8,6 +8,7 @@ use Getopt::Long;
 use List::Util qw/any sum/;
 use List::MoreUtils qw/uniq/;
 use Safe;
+use Pod::Usage;
 use YAML::Tiny;
 
 my $PROGRAM = 'mod_quant';
@@ -30,6 +31,8 @@ GetOptions(
     'sample_config=s' => \$fn_names,
     'parse_names'     => \$parse_names,
     'prefix=s'        => \$prefix,
+    'help'            => sub{ pod2usage(-verbose => 2); },
+    'version'         => sub{ print "This is $PROGRAM v$VERSION\n";exit; },
 );
 
 die "No configuration file specified!\n"
@@ -367,7 +370,7 @@ mod_quant - quantify peptide modifications from tab-delimited search results
 
 =head1 SYNOPSIS
 
-mod_quant --config --sample_config samples.yaml <input_1.tsv> [<input_n.tsv>]
+mod_quant --config config.yaml --sample_config samples.yaml <input_1.tsv> [<input_n.tsv>]
 
 =head1 DESCRIPTION
 
@@ -381,15 +384,9 @@ Requires the following non-core Perl libraries:
 
 =over 1
 
+=item * List::MoreUtils
+
 =item * YAML::Tiny
-
-=back
-
-In addition, requires the following binaries installed on the system path:
-
-=over 1
-
-=item * gnuplot
 
 =back
 
@@ -428,6 +425,14 @@ This option is ignored if C<--sample_config> is specified.
 
 If given, the prefix will be stripped from the beginning of sample names if
 matching.
+
+=item B<--help>
+
+Print usage summary and exit.
+
+=item B<--version>
+
+Print program version and exit.
 
 =back
 
