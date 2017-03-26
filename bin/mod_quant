@@ -12,7 +12,7 @@ use Pod::Usage;
 use YAML::Tiny;
 
 my $PROGRAM = 'mod_quant';
-my $VERSION = 0.001;
+my $VERSION = 0.002;
 
 my $fn_config;
 my $fn_names;
@@ -43,6 +43,18 @@ die "No configuration file specified!\n"
 my $cfg = YAML::Tiny->read($fn_config)
     or die "Error reading config file: $@\n";
 $cfg = $cfg->[0];
+
+for my $field (qw/
+    peptide_field
+    protein_field
+    sample_field
+    mod_field
+    quant_field
+    rank_field
+    mod_strings
+/) {
+    die "$field not defined in config file\n" if (! defined $cfg->{$field});
+}
 
 my $max_mods = $cfg->{max_mods} // 1;
 
@@ -107,6 +119,8 @@ sub report {
     for my $sample (@samples) {
         for my $n (0..$max_mods) {
             my @outputs = grep {$cfg->{output_fields}->{$_}} qw/mean sd psms quant/;
+            die "ERROR: no output fields requested\n"
+                if (scalar(@outputs) < 1);
             push @fields, map {"$sample.$n.$_"} @outputs;
         }
     }
@@ -303,6 +317,19 @@ sub parse_file {
     my $header = <$data>;
     my @keys = extract_fields($header);
 
+    # check for required fields
+    for my $field (qw/
+        peptide_field
+        protein_field
+        sample_field
+        mod_field
+        quant_field
+        rank_field
+    /) {
+        die "Missing $field field $cfg->{$field} in data file $fn\n"
+            if (! any {$_ eq $cfg->{$field}} @keys);
+    }
+
     my @records;
 
     my $i = 0;
@@ -319,7 +346,6 @@ sub parse_file {
                 $values[$i] = uc $values[$i]
             }
         }
-
 
         my %record;
         @record{@keys} = @values;
