@@ -5,7 +5,7 @@ use warnings;
 use Module::Build;
 
 my $builder = Module::Build->new(
-    module_name        => 'plimb',
+    module_name        => 'mod_quant',
     dist_version       => 0.002,
     dist_abstract      => 'PLIMB software',
     license            => 'GPL_3',
@@ -20,15 +20,14 @@ my $builder = Module::Build->new(
     requires => {
         'List::Util'      => 0,
         'List::MoreUtils' => 0,
-        'PerlIO::gzip'    => 0,
         'YAML::Tiny'      => 0,
     },
     meta_merge => {
         resources => {
-            repository => 'https://github.com/jvolkening/plimb'
+            repository => 'https://github.com/jvolkening/mod_quant'
         }
     },
-    add_to_cleanup => [ 'plimb-*' ],
+    add_to_cleanup => [ 'mod_quant-*' ],
     create_license => 1,
 );
 $builder->create_build_script;
