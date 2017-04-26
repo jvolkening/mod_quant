@@ -18,13 +18,15 @@ filters:
 ignore_case:
   - "Annotated Sequence"
 
-peptide_field: "Annotated Sequence"
-protein_field: "Protein Accessions"
-sample_field:  "Spectrum File"
-quant_field:   "Area"
-mod_field:     "Modifications"
-rank_field:    "Expectation Value"
-rank_best:     "low"
+peptide_field:   "Annotated Sequence"
+protein_field:   "Protein Accessions"
+sample_field:    "Spectrum File"
+quant_field:     "Area"
+mod_field:       "Modifications"
+rank_field:      "Expectation Value"
+rank_best:       "low"
+
+relaxed_mod_match: 0
 
 mod_strings:
   - "Oxidation"

@@ -60,7 +60,13 @@ my $max_mods = $cfg->{max_mods} // 1;
 
 # build modification regex
 my $mod_pick = join '|', @{ $cfg->{mod_strings} };
-my $mod_re = qr/([A-Z])(\d+)\s*\(($mod_pick)\)/;
+my $prev_wild = $cfg->{relaxed_mod_match}
+    ? '[^(]*'
+    : '';
+my $next_wild = $cfg->{relaxed_mod_match}
+    ? '[^)]*'
+    : '';
+my $mod_re = qr/([A-Z])(\d+)\s*\($prev_wild($mod_pick)$next_wild\)/;
 
 # remaining arguments should be data filenames
 my @records = map { parse_file($_) } @ARGV;
